@@ -42,8 +42,44 @@ predictors_coastal <- predictors_coastal[predictors_coastal!="Col_Date" &
                                            predictors_coastal!="TSS..mg.L."&
                                            predictors_coastal!="CHLA..ug.L."]
 
+# Removing the missing values:
+coastal<- coastal[!is.na(coastal[,"SECCHI_MEAN..m."]) 
+                  & !is.na(coastal[,"DIP..mgP.L."]) 
+                  & !is.na(coastal[,"DIN..mgN.L."])
+                  & !is.na(coastal[,"TN..mgN.L."])
+                  & !is.na(coastal[,"TP..mgP.L."])
+                  & !is.na(coastal[,"SUBREGIONS"])
+                  & !is.na(coastal[,"CHLA..ug.L."]),]
 
-coastal <- coastal %>% mutate(TS=cut(CHLA..ug.L., breaks=c(-Inf, 5, 20, 60 , Inf), labels=c("Oligo", "Meso", "Eu","Hyper")))
+# Replacing the non-detects with 2010 NCCA MDL values
+coastal[coastal[,"TP..mgP.L."]==0,"TP..mgP.L."] <- 0.0012
+coastal[coastal[,"DIN..mgN.L."]==0,"DIN..mgN.L."] <- 0.001
+coastal[coastal[,"DIP..mgP.L."]==0,"DIP..mgP.L."] <- 0.0027
+
+# Three categories based on Bricker et al, 2003
+# Chlorophyll a
+coastal <- coastal %>% mutate(TS_Chla=cut(CHLA..ug.L., breaks=c(-Inf, 5, 20, Inf), labels=c("Oligo", "Meso", "Eu")))
+# Nitrogen
+coastal <- coastal %>% mutate(TS_N=cut(TN..mgN.L., breaks=c(-Inf, 0.1, 1, Inf), labels=c("Oligo", "Meso", "Eu")))
+# Phosphorus
+coastal <- coastal %>% mutate(TS_P=cut(TP..mgP.L., breaks=c(-Inf, 0.01, 0.1, Inf), labels=c("Oligo", "Meso", "Eu")))
+# SD
+coastal <- coastal %>% mutate(TS_SD=cut(SECCHI_MEAN..m., breaks=c(-Inf, 1, 3, Inf), labels=c("Oligo", "Meso", "Eu")))
+# Equal Quantile
+Breaks_Chla_Q <- c(quantile(coastal[,"CHLA..ug.L."], probs = seq(0, 1, by = 1/3)))
+coastal <- coastal %>% mutate(TS_Chla_Q=cut(CHLA..ug.L., breaks=Breaks_Chla_Q, labels=c("Oligo", "Meso", "Eu")))
+
+
+
+# consistent_ts <- ifelse((coastal$TS_Chla==coastal$TS_P 
+#                       & coastal$TS_Chla==coastal$TS_N
+#                       ), 1, 0)
+# 
+# coastal <- cbind(coastal, consistent_ts)
+
+
+# Four categories
+# coastal <- coastal %>% mutate(TS_Chla=cut(CHLA..ug.L., breaks=c(-Inf, 5, 20, 60 , Inf), labels=c("Oligo", "Meso", "Eu","Hyper")))
 ##################################################
 #All Variables
 #Clean Up Data - Complete Cases
@@ -88,24 +124,40 @@ coastal<- coastal[!is.na(coastal[,"SECCHI_MEAN..m."])
                   & !is.na(coastal[,"SUBREGIONS"])
                   & !is.na(coastal[,"CHLA..ug.L."]),]
 
-# Replacing the non-detects with MDL
+# Replacing the non-detects with 2010 NCCA MDL values
 coastal[coastal[,"TP..mgP.L."]==0,"TP..mgP.L."] <- 0.0012
 coastal[coastal[,"DIN..mgN.L."]==0,"DIN..mgN.L."] <- 0.001
 coastal[coastal[,"DIP..mgP.L."]==0,"DIP..mgP.L."] <- 0.0027
 
 # Data splitting for cross validation 90%/10%
 set.seed(100)
+
+# Sample <- sample(nrow(coastal_consistent),size= round(0.1*dim(coastal)[1]),replace=FALSE)
+# 
 Sample <- sample(nrow(coastal),size= round(0.1*dim(coastal)[1]),replace=FALSE)
+coastal_consistent <- subset(coastal, coastal$consistent_ts==1)
+
+# Evaluation <- coastal_consistent[Sample,]
+# Model <- rbind(coastal_consistent[-Sample,], subset(coastal, coastal$consistent_ts==0))
+
 
 Evaluation <- coastal[Sample,]
 Model <- coastal[-Sample,]
-
 #set up the initializations 
-cutpt.inits <- array(dim= c(3))
+# Three cut-off points
+# cutpt.inits <- array(dim= c(3))
+# 
+# for (k in 1:3){
+#   cutpt.inits[k] <- rnorm(1)
+# }
 
-for (k in 1:3){
+# Two cut-off points
+cutpt.inits <- array(dim= c(2))
+
+for (k in 1:2){
   cutpt.inits[k] <- rnorm(1)
 }
+
 
 inits <- function () {list("cutpt_raw" = cutpt.inits)}
 # Center, scale, and log transform the predictors
@@ -115,7 +167,7 @@ TP.C <- as.numeric(scale(log(Model$TP..mgP.L.), center = TRUE, scale = TRUE))
 DIN.C <- as.numeric(scale(log(Model$DIN..mgN.L.), center = TRUE, scale = TRUE))
 DIP.C <- as.numeric(scale(log(Model$DIP..mgP.L.), center = TRUE, scale = TRUE))
 
-DataList = list('TS' = factor(Model[,"TS"])
+DataList = list('TS' = factor(Model[,"TS_Chla_Q"])
                 ,'SD' = SDD.C
                 ,'Nitrogen' = TN.C
                 ,'Phosphorus' = TP.C
@@ -137,10 +189,10 @@ adaptSteps = 3000
 burnInSteps = 5000    
 
 # Number of chains to run.       
-nChains = 3
+nChains = 1 # Change to 3 chains for final run
 
 # Total number of steps in chains to save.     
-numSavedSteps=50000    
+numSavedSteps=10000    # Change to 50000 for the final run
 
 # Number of steps to "thin" (1=keep every step).
 thinSteps= 5
@@ -150,7 +202,7 @@ nIter = ceiling( ( numSavedSteps * thinSteps ) / nChains )
 
 # Start the clock!
 ptm <- proc.time()
-JAGS.TSLogit <- jags.model('coastal_jags.R',data = DataList 
+coastal_jags <- jags.model('coastal_jags.R',data = DataList 
                            , inits, n.chains = nChains, n.adapt = adaptSteps)
 # Stop the clock
 proc.time() - ptm
@@ -160,7 +212,138 @@ proc.time() - ptm
 ################################################################################
 # Start the clock!
 ptm <- proc.time()
-Coda.Coastal <- coda.samples(JAGS.TSLogit, parameters, n.iter=50000)
+coastal_coda <- coda.samples(coastal_jags, parameters, n.iter=10000)  # Change to 50000 for the final run
 # Stop the clock
 proc.time() - ptm
+#################################################
+# Plot
+plot(coastal_coda[,1:3])
+plot(coastal_coda[,4:6])
+plot(coastal_coda[,7:9])
+plot(coastal_coda[,10:12])
+# Table
+print(xtable(cbind(summary(coastal_coda)$quantiles, summary(coastal_coda)$statistics[,2])), floating=FALSE)
+################################################################################
+################################################################################
+#9. JAGS Model Evaluation
+################################################################################
+# 3 Chains Combined
+simCodaOne.Coda.Coastal <- NULL
+for (i in 1:nChains) simCodaOne.Coda.Coastal <- rbind(simCodaOne.Coda.Coastal, coastal_coda[[i]])
+
+MCMC.Coastal <- as.mcmc(simCodaOne.Coda.Coastal)
+
+Coeff.Coastal.Summary <- matrix(NA, 42, 4)
+# Coeff.Coastal.Summary <- matrix(NA, 41, 4)
+
+for (i in 1:42){ Coeff.Coastal.Summary[i,] <- cbind(mean(simCodaOne.Coda.Coastal[,i])
+                                                    , sd(simCodaOne.Coda.Coastal[,i])
+                                                    , quantile(simCodaOne.Coda.Coastal[,i], c(0.025), type = 1)
+                                                    , quantile(simCodaOne.Coda.Coastal[,i], c(0.975), type = 1))}
+colnames(Coeff.Coastal.Summary) <- cbind("mean", "sd", "2.5%", "97.5%")
+
+rownames(Coeff.Coastal.Summary ) <-colnames(MCMC.Coastal)
+print(xtable(Coeff.Coastal.Summary, floating=FALSE))
+
+# Coefficient Matrix
+Alpha <- rbind(Coeff.Coastal.Summary["alpha_SD",]
+               , Coeff.Coastal.Summary["alpha_N",]
+               , Coeff.Coastal.Summary["alpha_P",]
+               , Coeff.Coastal.Summary["alpha_DIN",]
+               , Coeff.Coastal.Summary["alpha_DIP",]
+               , Coeff.Coastal.Summary[9:41,])
+# Center, scale, and log transform the evaluation data
+Eval.SDD.C <- as.numeric(scale(log(Evaluation$SECCHI_MEAN..m.), center = TRUE, scale = TRUE))
+Eval.TN.C <- as.numeric(scale(log(Evaluation$TN..mgN.L.), center = TRUE, scale = TRUE))
+Eval.TP.C <- as.numeric(scale(log(Evaluation$TP..mgP.L.), center = TRUE, scale = TRUE))
+Eval.DIN.C <- as.numeric(scale(log(Evaluation$DIN..mgN.L.), center = TRUE, scale = TRUE))
+Eval.DIP.C <- as.numeric(scale(log(Evaluation$DIP..mgP.L.), center = TRUE, scale = TRUE))
+
+# Subregion Matrix
+SubRegion <- matrix(0, dim(Evaluation)[1], length(levels(Evaluation[,"SUBREGIONS"])))
+for(j in 1:dim(Evaluation)[1]){
+    for(i in 1:length(levels(Evaluation[,"SUBREGIONS"]))){
+      if (factor(Evaluation[j, "SUBREGIONS"])==levels(Evaluation[,"SUBREGIONS"])[i]) 
+          SubRegion[j,i] <-1
+    }
+  }
+
+# Evaluation predictors
+Eval.Predictors <- cbind(Eval.SDD.C, Eval.TN.C, Eval.TP.C, Eval.DIN.C, Eval.DIP.C, SubRegion)
+
+predict.EvaluationAll <- Eval.Predictors %*% Alpha[,"mean"]
+# Remove NA's
+predict.EvaluationAll <- predict.EvaluationAll[!is.na(predict.EvaluationAll)]
+
+Predict.CatAll <-  vector(length = length(predict.EvaluationAll))
+C <- rbind(Coeff.Coastal.Summary["C[1]",],  Coeff.Coastal.Summary["C[2]",],  Coeff.Coastal.Summary["C[3]",])
+
+for (i in 1:length(predict.EvaluationAll)){
+  if (predict.EvaluationAll[i]< C[1]) Predict.CatAll[i] <- "Oligo"
+  if (predict.EvaluationAll[i]< C[2] && predict.EvaluationAll[i]> C[1]) Predict.CatAll[i] <- "Meso"
+  if (predict.EvaluationAll[i]< C[3] && predict.EvaluationAll[i]> C[2]) Predict.CatAll[i] <- "Eu"
+  if (predict.EvaluationAll[i]> C[3]) Predict.CatAll[i] <- "Hyper"
+}
+
+Pred.CatAll <- factor(Predict.CatAll, levels=c("Oligo", "Meso", "Eu", "Hyper"), ordered=TRUE)
+
+True.CatAll <- Evaluation[, "TS_Chla_Q"]
+
+True.CatAll <- True.CatAll[!is.na(log(Evaluation$SECMEAN))]
+
+CM.TS.Multilevel <- confusionMatrix(Pred.CatAll, True.CatAll)
+CM.TS.Multilevel
+xtable(CM.TS.Multilevel$table)
+CM.TS.Multilevel$overall["Accuracy"]
+CM.TS.Multilevel$byClass[,"Balanced Accuracy"]
+################################################################################
+# Functions
+################################################################################
+expected <- function(x, c1.5, c2.5, c.3.5, sigma){
+  p1.5 <- invlogit((x-c1.5)/sigma)
+  p2.5 <- invlogit((x-c2.5)/sigma)
+  p3.5 <- invlogit((x-c3.5)/sigma)
+  return((1*(1-p1.5)+2*(p1.5-p2.5)+3*(p2.5-p3.5)+4*p3.5))
+  # return((1*(1-p1.5)+2*(p1.5-p2.5)+3*p2.5))
+}
+
+# for plotting logistic regression model
+jitter.binary <- function(a, jitt=.05, up=1){
+  up*(a + (1-2*a)*runif(length(a),0,jitt))
+}
+
+logit <- function(x) return(log(x/(1-x)))
+
+invlogit <- function(x) return(1/(1+exp(-x)))
+Model_SubRegion <- matrix(0, dim(Model)[1], length(levels(Model[,"SUBREGIONS"])))
+for(j in 1:dim(Model)[1]){
+  for(i in 1:length(levels(Model[,"SUBREGIONS"]))){
+    if (factor(Model[j, "SUBREGIONS"])==levels(Model[,"SUBREGIONS"])[i]) Model_SubRegion[j,i] <-1
+    
+  }
+}
+################################################################################
+# Plots
+################################################################################
+
+beta <- Alpha[,"mean"]
+c1.5 <- C[1]
+c2.5 <- C[2]
+c3.5 <- C[3]
+sigma <- Coeff.Coastal.Summary["s","mean"]
+
+par(mar=c(3,3,0.25,0.25), mgp=c(1.5,0.25,0), tck=-0.005)
+plot(0, 0, xlim=c(-600,600), ylim=c(1,4), xlab="TSI", ylab="TS",
+     type="n", axes=F)
+axis(1)
+axis(2, at=1:4, labels=c("Oligo","Meso","Eutro", "Hyper"), las=1)
+lines(rep(c1.5, 2), c(1,2))
+lines(rep(c2.5, 2), c(2,3))
+lines(rep(c3.5, 2), c(3,4))
+curve(expected(x, c1.5, c2.5, c3.5, sigma), add=TRUE)
+# curve(expected(x, c1.5, c2.5, sigma), add=TRUE)
+
+with(Model, points(cbind(SDD.C, TN.C, TP.C, DIN.C, DIP.C, Model_SubRegion)%*%beta,
+                   jitter.binary(as.numeric(ordered(Model[,"TS_Chla_Q"]))),  col="cyan4"))
+
 #################################################
