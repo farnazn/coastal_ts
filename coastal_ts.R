@@ -80,6 +80,11 @@ coastal <- coastal %>% mutate(TS_Chla_Q=cut(CHLA..ug.L., breaks=Breaks_Chla_Q, l
 
 # Four categories
 # coastal <- coastal %>% mutate(TS_Chla=cut(CHLA..ug.L., breaks=c(-Inf, 5, 20, 60 , Inf), labels=c("Oligo", "Meso", "Eu","Hyper")))
+# Equal Quantile
+Breaks_Chla_Q <- c(quantile(coastal[,"CHLA..ug.L."], probs = seq(0, 1, by = 1/4)))
+coastal <- coastal %>% mutate(TS_Chla_Q=cut(CHLA..ug.L., breaks=Breaks_Chla_Q, labels=c("Oligo", "Meso", "Eu", "Hyper")))
+
+
 ##################################################
 #All Variables
 #Clean Up Data - Complete Cases
@@ -135,7 +140,7 @@ set.seed(100)
 # Sample <- sample(nrow(coastal_consistent),size= round(0.1*dim(coastal)[1]),replace=FALSE)
 # 
 Sample <- sample(nrow(coastal),size= round(0.1*dim(coastal)[1]),replace=FALSE)
-coastal_consistent <- subset(coastal, coastal$consistent_ts==1)
+# coastal_consistent <- subset(coastal, coastal$consistent_ts==1)
 
 # Evaluation <- coastal_consistent[Sample,]
 # Model <- rbind(coastal_consistent[-Sample,], subset(coastal, coastal$consistent_ts==0))
@@ -145,18 +150,18 @@ Evaluation <- coastal[Sample,]
 Model <- coastal[-Sample,]
 #set up the initializations 
 # Three cut-off points
-# cutpt.inits <- array(dim= c(3))
-# 
-# for (k in 1:3){
-#   cutpt.inits[k] <- rnorm(1)
-# }
+cutpt.inits <- array(dim= c(3))
 
-# Two cut-off points
-cutpt.inits <- array(dim= c(2))
-
-for (k in 1:2){
+for (k in 1:3){
   cutpt.inits[k] <- rnorm(1)
 }
+
+# Two cut-off points
+# cutpt.inits <- array(dim= c(2))
+# 
+# for (k in 1:2){
+#   cutpt.inits[k] <- rnorm(1)
+# }
 
 
 inits <- function () {list("cutpt_raw" = cutpt.inits)}
@@ -289,7 +294,7 @@ Pred.CatAll <- factor(Predict.CatAll, levels=c("Oligo", "Meso", "Eu", "Hyper"), 
 
 True.CatAll <- Evaluation[, "TS_Chla_Q"]
 
-True.CatAll <- True.CatAll[!is.na(log(Evaluation$SECMEAN))]
+# True.CatAll <- True.CatAll[!is.na(log(Evaluation$SECMEAN))]
 
 CM.TS.Multilevel <- confusionMatrix(Pred.CatAll, True.CatAll)
 CM.TS.Multilevel
@@ -347,3 +352,47 @@ with(Model, points(cbind(SDD.C, TN.C, TP.C, DIN.C, DIP.C, Model_SubRegion)%*%bet
                    jitter.binary(as.numeric(ordered(Model[,"TS_Chla_Q"]))),  col="cyan4"))
 
 #################################################
+
+#################################################
+beta_AllVar <-  Alpha[,"mean"]
+kappa_AllVar <- C
+
+c1.5_AllVar <- kappa_AllVar[1]
+c2.5_AllVar <- kappa_AllVar[2]
+c3.5_AllVar <- kappa_AllVar[3]
+sigma_AllVar <- Coeff.Coastal.Summary["s","mean"]
+
+X <- cbind(SDD.C, TN.C, TP.C, DIN.C, DIP.C, Model_SubRegion)
+TSI <- X%*% beta_AllVar
+TSI <- TSI[!is.na(TSI)]
+# se of kappas
+se.c <-  cbind(Coeff.Coastal.Summary["C[1]","sd"], Coeff.Coastal.Summary["C[2]","sd"], Coeff.Coastal.Summary["C[3]","sd"])
+Ibcg <- seq(range(TSI)[1],range(TSI)[2], length.out = 100)
+pA <- invlogit((kappa_AllVar[1] - Ibcg)/sigma_AllVar)
+pB <- invlogit((kappa_AllVar[2] - Ibcg)/sigma_AllVar) -  invlogit((kappa_AllVar[1] - Ibcg)/sigma_AllVar)
+pC <- invlogit((kappa_AllVar[3] - Ibcg)/sigma_AllVar) -  invlogit((kappa_AllVar[2] - Ibcg)/sigma_AllVar)
+pNA <- 1.0 - invlogit((kappa_AllVar[3] - Ibcg)/sigma_AllVar)
+
+# Figure
+# Graphical presentation of the POLR model. 
+# The x-axis is the trophic state index, the y-axis is the probability of being classified into one of the 4 trophic state classes, and the vertical lines and blue bars are the cutpoints $\pm$ one standard error.
+par(mar=c(3,3,2,0.25), mgp=c(1.5,0.5,0), tck=-0.01)
+plot(range(Ibcg), c(0,1), type="n",     xlab="Tropic State Index", ylab="Prob")
+polygon(x=c(c1.5_AllVar-se.c[1], c1.5_AllVar+se.c[1], c1.5_AllVar+se.c[1],c1.5_AllVar-se.c[1]),
+        y=c(0,0,1,1), col="cyan4", density=-1, border=NA)
+polygon(x=c(c2.5_AllVar-se.c[2], c2.5_AllVar+se.c[2], c2.5_AllVar+se.c[2],c2.5_AllVar-se.c[2]),
+        y=c(0,0,1,1), col="cyan4", density=-1, border=NA)
+polygon(x=c(c3.5_AllVar-se.c[3], c3.5_AllVar+se.c[3], c3.5_AllVar+se.c[3],c3.5_AllVar-se.c[3]),
+        y=c(0,0,1,1), col="cyan4", density=-1, border=NA)
+segments(x0=c(c1.5_AllVar,c2.5_AllVar,c3.5_AllVar), y0=rep(0,3),
+         x1=c(c1.5_AllVar,c2.5_AllVar,c3.5_AllVar), y1=rep(1,3),col=grey(0.3))
+axis(3, at=c(c1.5_AllVar,c2.5_AllVar, c3.5_AllVar), labels=c("Oligo|Meso","Meso|Eu" ,"Eu|Hyper"))
+lines(Ibcg, pA, lwd=1)
+lines(Ibcg, pB, lty=2, lwd=1)
+lines(Ibcg, pC, lty=3)
+lines(Ibcg, pNA, lty=4, lwd=1)
+legend(400, 0.5, legend=c("Oligo", "Meso","Eu", "Hyper"),
+       lty=1:4, cex=0.75, bty="n")
+
+
+################################################
