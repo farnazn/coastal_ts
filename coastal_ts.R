@@ -337,6 +337,7 @@ c2.5 <- C[2]
 c3.5 <- C[3]
 sigma <- Coeff.Coastal.Summary["s","mean"]
 
+pdf("Figures/POLR.pdf", width=8, height=10)
 par(mar=c(3,3,0.25,0.25), mgp=c(1.5,0.25,0), tck=-0.005)
 plot(0, 0, xlim=c(-600,600), ylim=c(1,4), xlab="TSI", ylab="TS",
      type="n", axes=F)
@@ -349,8 +350,8 @@ curve(expected(x, c1.5, c2.5, c3.5, sigma), add=TRUE)
 # curve(expected(x, c1.5, c2.5, sigma), add=TRUE)
 
 with(Model, points(cbind(SDD.C, TN.C, TP.C, DIN.C, DIP.C, Model_SubRegion)%*%beta,
-                   jitter.binary(as.numeric(ordered(Model[,"TS_Chla_Q"]))),  col="cyan4"))
-
+                   jitter.binary(as.numeric(ordered(Model[,"TS_Chla_Q"]))),  col="azure4"))
+invisible(dev.off())
 #################################################
 
 #################################################
@@ -376,23 +377,25 @@ pNA <- 1.0 - invlogit((kappa_AllVar[3] - Ibcg)/sigma_AllVar)
 # Figure
 # Graphical presentation of the POLR model. 
 # The x-axis is the trophic state index, the y-axis is the probability of being classified into one of the 4 trophic state classes, and the vertical lines and blue bars are the cutpoints $\pm$ one standard error.
+pdf("Figures/POLR_Prob.pdf", width=8, height=10)
+
 par(mar=c(3,3,2,0.25), mgp=c(1.5,0.5,0), tck=-0.01)
 plot(range(Ibcg), c(0,1), type="n",     xlab="Tropic State Index", ylab="Prob")
 polygon(x=c(c1.5_AllVar-se.c[1], c1.5_AllVar+se.c[1], c1.5_AllVar+se.c[1],c1.5_AllVar-se.c[1]),
-        y=c(0,0,1,1), col="cyan4", density=-1, border=NA)
+        y=c(0,0,1,1), col="azure3", density=-1, border=NA)
 polygon(x=c(c2.5_AllVar-se.c[2], c2.5_AllVar+se.c[2], c2.5_AllVar+se.c[2],c2.5_AllVar-se.c[2]),
-        y=c(0,0,1,1), col="cyan4", density=-1, border=NA)
+        y=c(0,0,1,1), col="azure3", density=-1, border=NA)
 polygon(x=c(c3.5_AllVar-se.c[3], c3.5_AllVar+se.c[3], c3.5_AllVar+se.c[3],c3.5_AllVar-se.c[3]),
-        y=c(0,0,1,1), col="cyan4", density=-1, border=NA)
+        y=c(0,0,1,1), col="azure3", density=-1, border=NA)
 segments(x0=c(c1.5_AllVar,c2.5_AllVar,c3.5_AllVar), y0=rep(0,3),
          x1=c(c1.5_AllVar,c2.5_AllVar,c3.5_AllVar), y1=rep(1,3),col=grey(0.3))
 axis(3, at=c(c1.5_AllVar,c2.5_AllVar, c3.5_AllVar), labels=c("Oligo|Meso","Meso|Eu" ,"Eu|Hyper"))
-lines(Ibcg, pA, lwd=1)
-lines(Ibcg, pB, lty=2, lwd=1)
-lines(Ibcg, pC, lty=3)
-lines(Ibcg, pNA, lty=4, lwd=1)
+lines(Ibcg, pA, lwd=2)
+lines(Ibcg, pB, lty=2, lwd=2)
+lines(Ibcg, pC, lty=3, lwd=2)
+lines(Ibcg, pNA, lty=4, lwd=2)
 legend(400, 0.5, legend=c("Oligo", "Meso","Eu", "Hyper"),
        lty=1:4, cex=0.75, bty="n")
-
+invisible(dev.off())
 
 ################################################
