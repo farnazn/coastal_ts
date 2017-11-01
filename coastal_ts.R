@@ -339,7 +339,7 @@ sigma <- Coeff.Coastal.Summary["s","mean"]
 
 pdf("Figures/POLR.pdf", width=8, height=10)
 par(mar=c(3,3,0.25,0.25), mgp=c(1.5,0.25,0), tck=-0.005)
-plot(0, 0, xlim=c(-600,600), ylim=c(1,4), xlab="TSI", ylab="TS",
+plot(0, 0, xlim=c(-800,700), ylim=c(1,4), xlab="TSI", ylab="TS",
      type="n", axes=F)
 axis(1)
 axis(2, at=1:4, labels=c("Oligo","Meso","Eutro", "Hyper"), las=1)
