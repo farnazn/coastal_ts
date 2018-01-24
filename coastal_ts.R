@@ -25,6 +25,8 @@ coastal <- coastal[coastal[,"VISNUM"]==1,]
 coastal <- coastal[coastal[,"Col_loc"]=="SURFACE",]
 # SAMPYEAR=2010
 coastal <- coastal[coastal[,"SAMPYEAR"]=="2010",]
+# SAMPYEAR=2015
+coastal <- coastal[coastal[,"SAMPYEAR"]=="2015",]
 
 coastal[,"REGION"] <- as.factor(coastal[,"REGION"])
 coastal[,"SUBREGIONS"] <- as.factor(coastal[,"SUBREGIONS"])
@@ -399,3 +401,46 @@ legend(400, 0.5, legend=c("Oligo", "Meso","Eu", "Hyper"),
 invisible(dev.off())
 
 ################################################
+# All Data
+
+# Center, scale, and log transform the coastal data
+Coastal.SDD.C <- as.numeric(scale(log(coastal$SECCHI_MEAN..m.), center = TRUE, scale = TRUE))
+Coastal.TN.C <- as.numeric(scale(log(coastal$TN..mgN.L.), center = TRUE, scale = TRUE))
+Coastal.TP.C <- as.numeric(scale(log(coastal$TP..mgP.L.), center = TRUE, scale = TRUE))
+Coastal.DIN.C <- as.numeric(scale(log(coastal$DIN..mgN.L.), center = TRUE, scale = TRUE))
+Coastal.DIP.C <- as.numeric(scale(log(coastal$DIP..mgP.L.), center = TRUE, scale = TRUE))
+
+# Subregion Matrix
+SubRegion <- matrix(0, dim(coastal)[1], length(levels(coastal[,"SUBREGIONS"])))
+for(j in 1:dim(coastal)[1]){
+  for(i in 1:length(levels(coastal[,"SUBREGIONS"]))){
+    if (factor(coastal[j, "SUBREGIONS"])==levels(coastal[,"SUBREGIONS"])[i]) 
+      SubRegion[j,i] <-1
+  }
+}
+
+# Evaluation predictors
+Coastal.Predictors <- cbind(Coastal.SDD.C, Coastal.TN.C, Coastal.TP.C, Coastal.DIN.C, Coastal.DIP.C, SubRegion)
+
+predict.CoastalAll <- Coastal.Predictors %*% Alpha[,"mean"]
+# Remove NA's
+predict.CoastalAll <- predict.CoastalAll[!is.na(predict.CoastalAll)]
+
+Predict.CatAll <-  vector(length = length(predict.CoastalAll))
+C <- rbind(Coeff.Coastal.Summary["C[1]",],  Coeff.Coastal.Summary["C[2]",],  Coeff.Coastal.Summary["C[3]",])
+
+for (i in 1:length(predict.CoastalAll)){
+  if (predict.CoastalAll[i]< C[1]) Predict.CatAll[i] <- "Oligo"
+  if (predict.CoastalAll[i]< C[2] && predict.CoastalAll[i]> C[1]) Predict.CatAll[i] <- "Meso"
+  if (predict.CoastalAll[i]< C[3] && predict.CoastalAll[i]> C[2]) Predict.CatAll[i] <- "Eu"
+  if (predict.CoastalAll[i]> C[3]) Predict.CatAll[i] <- "Hyper"
+}
+
+Pred.CatAll <- factor(Predict.CatAll, levels=c("Oligo", "Meso", "Eu", "Hyper"), ordered=TRUE)
+coastal2010 <- c(coastal, predict.CoastalAll, Predict.CatAll)
+
+
+coastal$predict_TSI <- predict.CoastalAll
+coastal$predict_Cat  <- Predict.CatAll
+View(coastal)
+write.csv(coastal, file = "coastal2010.csv")
